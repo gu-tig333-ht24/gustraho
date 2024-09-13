@@ -27,6 +27,7 @@ class TodoListPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final List<String> todoItems = [
       'Power nap',
+      'Homework'
     ];
 
     return Scaffold(
