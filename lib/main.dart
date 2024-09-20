@@ -56,8 +56,7 @@ class TodoListPageState extends State<TodoListPage> {
     });
   }
 
-    // Filtrera uppgifter baserat på "All", "Done", eller "Undone"
-  List<Map<String, dynamic>> _filteredTodoItems() { // NY funktion
+  List<Map<String, dynamic>> _filteredTodoItems() { 
     if (_filter == 'All') {
       return _todoItems; // Visa alla uppgifter
     } else if (_filter == 'Done') {
