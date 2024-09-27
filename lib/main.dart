@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 void main() {
   runApp(const MyApp());
@@ -28,31 +30,106 @@ class TodoListPage extends StatefulWidget {
 }
 
 class TodoListPageState extends State<TodoListPage> {
-  final List<Map<String, dynamic>> _todoItems = [
-    {'task': 'Power nap', 'completed': false},
-    {'task': 'Homework', 'completed': false},
-    {'task': 'House chores', 'completed': false},
-  ];
+  List<Map<String, dynamic>> _todoItems = [];
+  String _filter = 'All'; 
 
-  String _filter = 'All'; // Håller reda på vilket filter som är valt
+  // Funktion för att hämta api nyckeln
+  Future<String> getApiKey() async {
+    final response = await http.get(Uri.parse('https://todoapp-api.apps.k8s.gu.se/register'));
 
-  //  lägga till en ny uppgift
-    void _addTask(String task) {
-    setState(() {
-      _todoItems.add({'task': task, 'completed': false});
-    });
+    if (response.statusCode == 200) {
+      return response.body; 
+    } else {
+      throw Exception('Failed to load API key');
+    }
   }
 
-  // Växlar mellan klar och ej klar för en uppgift
-    void _toggleTaskCompletion(int index) {
-    setState(() {
-      _todoItems[index]['completed'] = !_todoItems[index]['completed'];
-    });
+  // Funktion för att hämta todos från api:et (GET)
+  Future<void> fetchTodos(String apiKey) async {
+    final response = await http.get(
+      Uri.parse('https://todoapp-api.apps.k8s.gu.se/todos?key=$apiKey'),
+    );
+
+    if (response.statusCode == 200) {
+      List<dynamic> todosJson = json.decode(response.body); 
+      setState(() {
+        _todoItems.clear();  
+        for (var todo in todosJson) {
+          _todoItems.add({
+            'id': todo['id'],
+            'task': todo['title'], 
+            'completed': todo['done'],
+          });
+        }
+      });
+    } else {
+      throw Exception('Failed to fetch todos');
+    }
   }
-  // Ta bort en uppgift
-    void _removeTask(int index) {
-    setState(() {
-      _todoItems.removeAt(index);
+
+  // Funktion för att lägga till en todo i API:et (POST)
+  Future<void> addTodoItem(String task, String apiKey) async {
+    final response = await http.post(
+      Uri.parse('https://todoapp-api.apps.k8s.gu.se/todos?key=$apiKey'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'title': task,
+        'done': false,
+      }),
+    );
+
+
+    if (response.statusCode == 200) {
+      fetchTodos(apiKey); // Uppdatera listan efter att en uppgift har lagts till
+    } else {
+      throw Exception('Failed to add todo');
+    }
+  }
+
+  // Funktion för att uppdatera en todo i API:et (PUT)
+  Future<void> updateTodoItem(int index, String apiKey) async {
+    final todo = _todoItems[index];
+    final response = await http.put(
+      Uri.parse('https://todoapp-api.apps.k8s.gu.se/todos/${todo['id']}?key=$apiKey'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'title': todo['task'],
+        'done': !todo['completed'],
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      setState(() {
+        _todoItems[index]['completed'] = !_todoItems[index]['completed'];
+      });
+    } else {
+      throw Exception('Failed to update todo');
+    }
+  }
+
+  // Funktion för att ta bort en todo API:et (DELETE)
+  Future<void> deleteTodoItem(int index, String apiKey) async {
+    final todo = _todoItems[index];
+    final response = await http.delete(
+      Uri.parse('https://todoapp-api.apps.k8s.gu.se/todos/${todo['id']}?key=$apiKey'),
+    );
+
+    if (response.statusCode == 200) {
+      setState(() {
+        _todoItems.removeAt(index);
+      });
+    } else {
+      throw Exception('Failed to delete todo');
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    getApiKey().then((apiKey) {
+      fetchTodos(apiKey);
+    }).catchError((error) {
+      print("Failed to fetch API key: $error");
     });
   }
 
@@ -71,7 +148,8 @@ class TodoListPageState extends State<TodoListPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFd3eac8),
       appBar: AppBar(
-        title: const Text('Todo List'),
+        title: const Text('TIG333 TODO'),
+        centerTitle: true,
         backgroundColor: const Color(0xFFafd89d),
         actions: [
           PopupMenuButton<String>(  // Popup menyn 
@@ -107,7 +185,9 @@ class TodoListPageState extends State<TodoListPage> {
             leading: Checkbox(
               value: todoItem['completed'], 
               onChanged: (bool? value) {
-                _toggleTaskCompletion(index);
+                getApiKey().then((apiKey) {
+                  updateTodoItem(index, apiKey);
+                });
               },
             ),
             title: Text(
@@ -121,22 +201,28 @@ class TodoListPageState extends State<TodoListPage> {
             trailing: IconButton(
               icon: const Icon(Icons.close),
               onPressed: () {
-                _removeTask(index);
+                getApiKey().then((apiKey) {
+                  deleteTodoItem(index, apiKey);
+                });
               },
             ),
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final newTask = await Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => const AddTodoPage()),
-          );
-          if (newTask != null && newTask.isNotEmpty) {
-            _addTask(newTask);
-          }
-        },
-        child: const Icon(Icons.add),
+
+
+  floatingActionButton: FloatingActionButton(
+    onPressed: () async {
+      final newTask = await Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => const AddTodoPage()),
+      );
+      if (newTask != null && newTask.isNotEmpty) {
+        getApiKey().then((apiKey) {
+          addTodoItem(newTask, apiKey); 
+        });
+      }
+    },
+    child: const Icon(Icons.add),
       ),
     );
   }
